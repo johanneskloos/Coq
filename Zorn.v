@@ -989,7 +989,7 @@ Section Theorems.
 
   (** Zorn's lemma proves the well-ordering theorem. *)
 
-  Theorem well_ordering_from_zorns_lemma
+  Theorem zorns_lemma_imp_well_ordering_theorem
     (zl: ∀ A R preR chub, @ZornsLemma A R preR chub)
     {A} (eqA: relation A) {equA: Equivalence eqA}:
     ∃ ltA, well_order eqA ltA.
@@ -1004,13 +1004,13 @@ Section Theorems.
     {A} (eqA: relation A) {equA: Equivalence eqA}:
     ∃ ltA, well_order eqA ltA.
   Proof.
-    apply well_ordering_from_zorns_lemma; trivial.
+    apply zorns_lemma_imp_well_ordering_theorem; trivial.
     apply zorns_lemma, choice.
   Qed.
   
   (** The well-ordering theorem implies choice, closing the circle. *)
 
-  Theorem axiom_of_choice_from_well_ordering_theorem
+  Theorem well_ordering_theorem_imp_axiom_of_choice
     (wo: ∀ {A} (eqA: relation A) {equA: Equivalence eqA},
       ∃ ltA, well_order eqA ltA):
     GeneralizedSetoidRelationalChoice.
