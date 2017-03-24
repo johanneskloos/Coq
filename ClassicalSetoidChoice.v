@@ -24,21 +24,8 @@
 From Coq.Logic Require Import ChoiceFacts.
 From Coq.Logic Require Export Classical.
 From Coq.Classes Require Import Equivalence.
+From misc Require Import MoreChoice.
 From misc Require Zorn CantorBernsteinSchroeder.
-
-(** * Reification principle. *)
-
-(** Taken from Coq trunk; this will be in the standard library. *)
-
-Definition SetoidFunctionalChoice_on A B :=
-  forall R : A -> A -> Prop,
-  forall T : A -> B -> Prop,
-  Equivalence R ->
-  (forall x x' y, R x x' -> T x y -> T x' y) ->
-  (forall x, exists y, T x y) ->
-  exists f : A -> B, forall x : A, T x (f x) /\
-    (forall x' : A, R x x' -> f x = f x').
-Notation SetoidFunctionalChoice := (forall A B, SetoidFunctionalChoice_on A B).
 
 (** * The choice axiom. *)
 
@@ -47,14 +34,14 @@ Axiom setoid_choice: SetoidFunctionalChoice.
 (** * Derived results. *)
 
 Definition gen_setoid_rel_choice A B :=
-  Zorn.gen_setoid_fun_choice_imp_gen_setoid_rel_choice A B (setoid_choice A B).
+  gen_setoid_fun_choice_imp_gen_setoid_rel_choice A B (setoid_choice A B).
 Definition zorns_lemma {A} R {preR} :=
   Zorn.zorns_lemma classic gen_setoid_rel_choice (A:=A) R (preR := preR).
 Definition well_ordering_theorem {A} eqA {equA} :=
   Zorn.well_ordering_theorem classic gen_setoid_rel_choice
     (A:=A) eqA (equA := equA).
 Definition setoid_fun_rel_reification A B :=
-  CantorBernsteinSchroeder.setoid_fun_choice_imp_setoid_fun_rel_reification A B
+  setoid_fun_choice_imp_setoid_fun_rel_reification A B
     (setoid_choice A B).
 Definition cantor_bernstein_schröder {A} Ae {Aequ: @Equivalence A Ae}
   {B} Be {Bequ: @Equivalence B Be} f f_proper f_inj g g_proper g_inj :=
