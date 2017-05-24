@@ -8,8 +8,9 @@
 
  This library requires Coq 8.6. *)
 From Coq.Classes Require Import Equivalence Morphisms SetoidClass.
-From Coq Require Import Utf8 ChoiceFacts ClassicalFacts Relations.
-From misc Require Import Vectors.
+From Coq Require Import Utf8 ChoiceFacts ClassicalFacts Relations List.
+From Coq Require Import PeanoNat Eqdep_dec Psatz.
+From misc Require Import Vectors Zorn MoreChoice ChoiceResults.
 Import VectorNotations.
 
 Lemma forall_iff {A} (P Q: A → Prop):
@@ -65,7 +66,7 @@ Section FirstOrderLogic.
   Notation "(∈)" := (var_set_In lang) (only parsing).
   Notation "(∉)" := (λ x y, ¬x ∈ y).
   Infix "∉" := (∉) (at level 70).
-  Infix "=?" := (var_eqb lang) (at level 60).
+  Infix "=?" := (var_eqb lang) (at level 70).
   
   Lemma set_empty x: x ∉ ∅.
   Proof. apply var_set_empty_spec. Qed.
@@ -562,7 +563,7 @@ Section FirstOrderLogic.
   Qed.
   
   Definition αrenaming := clos_refl_sym_trans formula αstep.
-  Instance αrenaming_equivalence: subrelation αrenaming equivalence.
+  Global Instance αrenaming_equivalence: subrelation αrenaming equivalence.
   Proof.
     induction 1.
     - now apply αstep_equivalence.
@@ -570,6 +571,562 @@ Section FirstOrderLogic.
     - now symmetry.
     - now transitivity y.
   Qed.
+  Global Instance αrenaming_equiv: Equivalence αrenaming.
+  Proof.
+    split.
+    - constructor 2.
+    - now constructor 3.
+    - intros x y z; now constructor 4 with y.
+  Qed.
   
+  Section MappedInterpretation.
+    Context (σ₁ σ₂: structure) (mu: universe σ₁ → universe σ₂).
+    Context (map_f: ∀ f a,
+      mu (interpret_func σ₁ f a) =
+      interpret_func σ₂ f (Vector.map mu a)).
+    Context (map_p: ∀ p a,
+      interpret_pred σ₁ p a ↔ interpret_pred σ₂ p (Vector.map mu a)).
+    Context (sur: ∀ y, ∃ x, mu x = y).
+    Notation "f · g" := (λ x, f (g x)) (at level 60).
+    Lemma map_interpret_term ν t:
+      mu (interpret_term σ₁ ν t) = interpret_term σ₂ (mu · ν) t.
+    Proof.
+      induction t; cbn; trivial.
+      rewrite map_f.
+      rewrite vector_map_map.
+      f_equal.
+      now apply vector_map_Forall.
+    Qed.
+    
+    Lemma map_interpretation ν φ:
+      interpret_formula σ₁ ν φ ↔
+      interpret_formula σ₂ (λ v, mu (ν v)) φ.
+    Proof.
+      revert ν.
+      induction φ; intros; cbn; try now rewrite ?IHφ, ?IHφ1, ?IHφ2.
+      - rewrite map_p, vector_map_map.
+        f_equiv; apply vector_map_ext.
+        apply map_interpret_term.
+      - transitivity (∀ w, interpret_formula σ₂ (update σ₂ v (mu w) (mu · ν)) φ).
+        + apply forall_iff; intro w.
+          rewrite IHφ.
+          apply interpret_formula_local.
+          intros x _.
+          unfold update.
+          destruct (v =? x); trivial.
+        + split; intros pre w; auto.
+          destruct (sur w) as [w' <-]; auto.
+      -  transitivity (∃ w, interpret_formula σ₂ (update σ₂ v (mu w) (mu · ν)) φ).
+        + apply exists_iff; intro w.
+          rewrite IHφ.
+          apply interpret_formula_local.
+          intros x _.
+          unfold update.
+          destruct (v =? x); trivial.
+        + split; intros [w pre]; eauto.
+          destruct (sur w) as [w' <-]; eauto.
+    Qed.
+  End MappedInterpretation.
   
+  Class EM := em: excluded_middle.
+  Lemma and_assoc φ₁ φ₂ φ₃: φ₁ '∧ (φ₂ '∧ φ₃) ≡ (φ₁ '∧ φ₂) '∧ φ₃.
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma or_assoc φ₁ φ₂ φ₃: φ₁ '∨ (φ₂ '∨ φ₃) ≡ (φ₁ '∨ φ₂) '∨ φ₃.
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma and_comm φ₁ φ₂: φ₁ '∧ φ₂ ≡ φ₂ '∧ φ₁.
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma or_comm φ₁ φ₂: φ₁ '∨ φ₂ ≡ φ₂ '∨ φ₁.
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma and_or_l φ₁ φ₂ φ₃: φ₁ '∧ (φ₂ '∨ φ₃) ≡ (φ₁ '∧ φ₂) '∨ (φ₁ '∧ φ₃).
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma and_or_r φ₁ φ₂ φ₃: (φ₁ '∨ φ₂) '∧ φ₃ ≡ (φ₁ '∧ φ₃) '∨ (φ₂ '∧ φ₃).
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma or_and_l φ₁ φ₂ φ₃: φ₁ '∨ (φ₂ '∧ φ₃) ≡ (φ₁ '∨ φ₂) '∧ (φ₁ '∨ φ₃).
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma or_and_r φ₁ φ₂ φ₃: (φ₁ '∧ φ₂) '∨ φ₃ ≡ (φ₁ '∨ φ₃) '∧ (φ₂ '∨ φ₃).
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma and_or_absorb_l φ₁ φ₂: φ₁ '∧ (φ₁ '∨ φ₂) ≡ φ₁.
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma and_or_absorb_r φ₁ φ₂: (φ₁ '∨ φ₂) '∧ φ₁ ≡ φ₁.
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma or_and_absorb_l φ₁ φ₂: φ₁ '∨ (φ₁ '∧ φ₂) ≡ φ₁.
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma or_and_absorb_r φ₁ φ₂: (φ₁ '∧ φ₂) '∨ φ₁ ≡ φ₁.
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma and_idem φ: φ '∧ φ ≡ φ.
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma or_idem φ: φ '∨ φ ≡ φ.
+  Proof. intros ??; cbn; tauto. Qed.
+  
+  Notation "'⊤" := ('¬ '⊥).
+  Lemma imp_diag φ: φ '→ φ ≡ '⊤.
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma imp_and_l φ₁ φ₂ φ₃: (φ₁ '∧ φ₂) '→ φ₃ ≡ φ₁ '→ (φ₂ '→ φ₃).
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma imp_or_l φ₁ φ₂ φ₃: (φ₁ '∨ φ₂) '→ φ₃ ≡ (φ₁ '→ φ₃) '∧ (φ₂ '→ φ₃).
+  Proof. intros ??; cbn; tauto. Qed.
+  Lemma imp_and_r φ₁ φ₂ φ₃: φ₁ '→ (φ₂ '∧ φ₃) ≡ (φ₁ '→ φ₂) '∧ (φ₁ '→ φ₃).
+  Proof. intros ??; cbn; tauto. Qed.
+  
+  Lemma holds `{EM} σ ν φ: interpret_formula σ ν φ ∨ ¬interpret_formula σ ν φ.
+  Proof. apply em. Qed.
+  
+  Lemma imp_or_r `{EM} φ₁ φ₂ φ₃: φ₁ '→ (φ₂ '∨ φ₃) ≡ (φ₁ '→ φ₂) '∨ (φ₁ '→ φ₃).
+  Proof.
+    intros ??; cbn; intuition.
+    destruct (holds σ ν φ₂); tauto.
+  Qed.
+  Lemma de_morgan_and φ₁ φ₂: ('¬ φ₁) '∧ ('¬ φ₂) ≡ '¬ (φ₁ '∨ φ₂).
+  Proof. intros ??; cbn; intuition. Qed.
+  Lemma de_morgan_or `{EM} φ₁ φ₂: ('¬ φ₁) '∨ ('¬ φ₂) ≡ '¬ (φ₁ '∧ φ₂).
+  Proof.
+    intros ??; cbn; intuition.
+    destruct (holds σ ν φ₁); tauto.
+  Qed.
+  Lemma imp_spec `{EM} φ₁ φ₂: φ₁ '→ φ₂ ≡ ('¬φ₁) '∨ φ₂.
+  Proof.
+    intros ??; cbn; intuition.
+    destruct (holds σ ν φ₁); tauto.
+  Qed.
+  Lemma neg_neg `{EM} φ: '¬ ('¬φ) ≡ φ.
+  Proof. intros ??; cbn; destruct (holds σ ν φ); tauto. Qed.
+  Lemma and_spec `{EM} φ₁ φ₂: φ₁ '∧ φ₂ ≡ '¬ (('¬ φ₁) '∨ ('¬ φ₂)).
+  Proof. now rewrite de_morgan_or, neg_neg. Qed.
+  
+  Lemma neg_exists x φ: ('¬ '∃ x, φ) ≡ '∀ x, '¬ φ.
+  Proof. intros ??; cbn; firstorder. Qed.
+  Lemma neg_forall `{EM} x φ: ('¬ '∀ x, φ) ≡ '∃ x, '¬ φ.
+  Proof.
+    intros ??; cbn.
+    split; [|firstorder].
+    intro.
+    destruct (em (∃ v, ¬interpret_formula σ (update σ x v ν) φ)); trivial.
+    contradict H0.
+    intro.
+    destruct (holds σ (update σ x v ν) φ); auto.
+    contradict H1; eauto.
+  Qed.
+  Lemma forall_spec `{EM} x φ: '∀ x, φ ≡ '¬ ('∃ x, '¬ φ).
+  Proof. now rewrite <- neg_forall, neg_neg. Qed.
+  
+  Inductive qff: formula → Prop :=
+    | qff_pred p a: qff (fpred p a)
+    | qff_and φ₁ φ₂: qff φ₁ → qff φ₂ → qff (φ₁ '∧ φ₂)
+    | qff_or φ₁ φ₂: qff φ₁ → qff φ₂ → qff (φ₁ '∨ φ₂)
+    | qff_impl φ₁ φ₂: qff φ₁ → qff φ₂ → qff (φ₁ '→ φ₂)
+    | qff_not φ: qff φ → qff ('¬ φ)
+    | qff_bot: qff '⊥.
+  
+  Lemma formula_ind_or_not_bot_exists `{EM} (P: formula → Prop)
+    (case_proper: ∀ φ φ', φ ≡ φ' → P φ → P φ')
+    (case_pred: ∀ p a, P (fpred p a))
+    (case_or: ∀ φ₁ φ₂ (IH₁: P φ₁) (IH₂: P φ₂), P (φ₁ '∨ φ₂))
+    (case_not: ∀ φ (IH: P φ), P ('¬ φ))
+    (case_bot: P '⊥)
+    (case_exists: ∀ x φ (IH: P φ), P ('∃ x, φ))
+    φ: P φ.
+  Proof.
+    assert (Proper ((≡) ==> iff) P) as P_proper.
+    { apply proper_sym_impl_iff; [apply _..|assumption]. }
+    induction φ; auto.
+    - rewrite and_spec; auto.
+    - rewrite imp_spec; auto.
+    - rewrite forall_spec; auto.
+  Qed.
+  
+  Hint Constructors qff.
+  Lemma formula_ind_or_not_bot_qff `{EM} (P: formula → Prop)
+    (case_proper: ∀ φ φ', φ ≡ φ' → qff φ' → qff φ → P φ → P φ')
+    (case_pred: ∀ p a, P (fpred p a))
+    (case_or: ∀ φ₁ φ₂ (IH₁: P φ₁) (IH₂: P φ₂), P (φ₁ '∨ φ₂))
+    (case_not: ∀ φ (IH: P φ), P ('¬ φ))
+    (case_bot: P '⊥)
+    φ: qff φ → P φ.
+  Proof.
+    induction 1; auto.
+    - apply (case_proper ('¬ (('¬ φ₁) '∨ ('¬ φ₂)))); auto.
+      now rewrite and_spec.
+    - apply (case_proper (('¬ φ₁) '∨ φ₂)); auto.
+      now rewrite imp_spec.
+  Qed.
+  
+  Section Ultraproduct.
+    Context {I U} {HU: @Ultrafilter (I → Prop) sub U}.
+    Lemma uf_sub: Proper (sub ++> Basics.impl) U.
+    Proof. apply filt_uc, _. Qed.
+    Lemma uf_wd: Proper (pointwise_relation I iff ==> iff) U.
+    Proof.
+      intros s s' eqs.
+      split; apply (filt_uc (I → Prop) sub); intro; apply eqs.
+    Qed.
+    Lemma uf_min: ¬U (λ _, False).
+    Proof.
+      destruct (filt_proper (I → Prop) sub) as [b contra].
+      contradict contra.
+      eapply (filt_uc (I → Prop) sub); eauto.
+      destruct 1.
+    Qed.
+    Lemma uf_inter s₁ s₂: U s₁ → U s₂ → U (λ x, s₁ x ∧ s₂ x).
+    Proof.
+      intros in₁ in₂.
+      destruct (filt_dir (I → Prop) sub s₁ s₂) as [w [inw [sub₁ sub₂]]]; auto.
+      apply (filt_uc (I → Prop) sub w); auto.
+      split; auto.
+    Qed.
+    Lemma uf_not_complement s: U s → U (λ x, ¬s x) → False.
+    Proof.
+      intros ins incs.
+      apply uf_min, (uf_wd (λ x, s x ∧ ¬s x)).
+      - firstorder.
+      - now apply uf_inter.
+    Qed.
+    Context (i: I).
+    Lemma uf_ultra `{EM} s: U s ∨ U (λ x, ¬s x).
+    Proof.
+      apply (ultrafilter_prime (I → Prop) sub em
+        (λ s₁ s₂ x, s₁ x ∨ s₂ x) (λ s₁ s₂ x, s₁ x ∧ s₂ x)).
+      - now left.
+      - now right.
+      - now intros ??? [].
+      - now intros ??? [].
+      - intros ?????? [|]; auto.
+      - split; auto.
+      - intros; split; intros ?; tauto.
+      - apply _.
+      - apply (filt_ultra (I → Prop) sub (λ s', (∀ x, s' x) ∨ U s'));
+          [|now right|auto].
+        split. split.
+        + intros s₁ s₂ ssub [case|case]; auto.
+          right.
+          apply (filt_uc (I → Prop) sub s₁); auto.
+        + intros s₁ s₂ [case₁|case₁] [case₂|case₂].
+          * unfold sub; exists s₁; eauto.
+          * exists s₂; unfold sub; eauto.
+          * exists s₁; unfold sub; eauto.
+          * destruct (filt_dir (I → Prop) sub s₁ s₂) as [s₃ [ins₃ [sub₁ sub₂]]];
+              eauto.
+        + exists (λ _, False).
+          intros [case|case].
+          * exact (case i).
+          * destruct (filt_proper (I → Prop) sub) as [s' contra].
+            contradict contra.
+            apply (uf_sub (λ _, False)); firstorder.
+    Qed.
+    
+    Context (models: I → structure).
+    Definition ultraproduct := {|
+      universe := ∀ i, universe (models i);
+      interpret_func :=
+        λ f a i, interpret_func (models i) f (Vector.map (λ x, x i) a);
+      interpret_pred :=
+        λ p a, U (λ i, interpret_pred (models i) p (Vector.map (λ x, x i) a))
+    |}.
+    
+    Definition extent ν φ i := interpret_formula (models i) (λ x, ν x i) φ.
+    Let good φ ν := interpret_formula ultraproduct ν φ ↔ U (extent ν φ).
+    
+    Lemma up_pred p a ν: good (fpred p a) ν.
+    Proof.
+      cbn; unfold good, extent.
+      apply uf_wd; intro j.
+      rewrite vector_map_map; cbn.
+      f_equiv.
+      apply vector_map_ext.
+      induction x; cbn; trivial.
+      f_equal.
+      rewrite vector_map_map.
+      apply vector_map_Forall; trivial.
+    Qed.
+    
+    Lemma up_or `{EM}
+      φ₁ φ₂ ν (IH₁: good φ₁ ν) (IH₂: good φ₂ ν): good (φ₁ '∨ φ₂) ν.
+    Proof.
+      unfold good, extent in *.
+      cbn; rewrite IH₁, IH₂.
+      split.
+      - intros [case|case].
+        + eapply uf_sub; [|apply case]; auto.
+          now left.
+        + eapply uf_sub; [|apply case]; auto.
+          now right.
+      - intro pre.
+        fold (extent ν φ₁) in *.
+        fold (extent ν φ₂) in *.
+        destruct (uf_ultra (extent ν φ₁)); auto.
+        destruct (uf_ultra (extent ν φ₂)); auto.
+        apply uf_not_complement in pre; [contradiction|].
+        apply (uf_wd (λ i, ¬extent ν φ₁ i ∧ ¬extent ν φ₂ i)).
+        + intro; tauto.
+        + now apply uf_inter.
+    Qed.
+    
+    Lemma up_not `{EM} φ ν (IH: good φ ν): good ('¬ φ) ν.
+    Proof.
+      unfold good in *; cbn.
+      rewrite IH.
+      destruct (uf_ultra (extent ν φ)) as [case|case].
+      - intuition.
+        apply uf_not_complement in H0; auto.
+      - intuition.
+        apply uf_not_complement in H1; auto.
+    Qed.
+    
+    Lemma up_bot ν: good '⊥ ν.
+    Proof.
+      unfold good, extent; cbn.
+      split; [tauto|].
+      intros []%uf_min.
+    Qed.
+    
+    Lemma up_exists x φ ν `{EM} (choice: DependentFunctionalChoice)
+      (IH: ∀ v, good φ (update ultraproduct x v ν)): good ('∃ x, φ) ν.
+    Proof.
+      unfold good in *; cbn.
+      split. {
+        intros [v pre].
+        rewrite IH in pre.
+        revert pre.
+        apply uf_sub.
+        intros j.
+        unfold extent; cbn.
+        intro pre.
+        exists (v j).
+        revert pre; apply interpret_formula_local.
+        intros y iny.
+        unfold update.
+        destruct (x =? y); trivial.
+      } {
+        intro pre.
+        set (int i v :=
+          interpret_formula (models i) (update (models i) x v (λ y, ν y i)) φ).
+        destruct (choice _ _ (λ i u, int i u ∨ ∀ v, ¬int i v))
+          as [v v_spec].
+        { intro j; cbn.
+          destruct (em (∃ y, int j y)) as [[y spec]|noy]; eauto.
+          exists (ν x j).
+          right; firstorder. }
+        exists v.
+        apply IH.
+        revert pre.
+        apply uf_sub.
+        unfold extent.
+        intros j [w holds]; cbn in *.
+        destruct (v_spec j) as [case|case].
+        - revert case; apply interpret_formula_local.
+          intros y iny.
+          unfold update.
+          destruct (x =? y); trivial.
+        - destruct (case w); apply holds.
+      }
+    Qed.
+    
+    Instance extend_proper: Proper (eq ==> (≡) ==> eq ==> iff) extent.
+    Proof.
+      unfold extent.
+      intros ν ? <- φ φ' eqφ ?? <-.
+      apply eqφ.
+    Qed.
+    Instance good_proper: Proper ((≡) ==> eq ==> iff) good.
+    Proof.
+      unfold good.
+      intros φ φ' eqφ ν ? <-.
+      rewrite (eqφ ultraproduct ν).
+      enough (U (extent ν φ) ↔ U (extent ν φ')) by tauto.
+      apply uf_wd; intro.
+      now rewrite eqφ.
+    Qed.
+    
+    Theorem łoś_qff `{EM} φ (qffφ: qff φ): ∀ ν, good φ ν.
+    Proof.
+      induction qffφ using formula_ind_or_not_bot_qff; intro;
+        auto using up_pred, up_or, up_not, up_bot.
+      now rewrite <- H0.
+    Qed.
+    Theorem łoś `{EM} (choice: DependentFunctionalChoice)
+      φ: ∀ ν, good φ ν.
+    Proof.
+      induction φ using formula_ind_or_not_bot_exists; intro;
+        auto using up_pred, up_or, up_not, up_bot, up_exists.
+      now rewrite <- H0.
+    Qed.
+  End Ultraproduct.
+  
+  Section Compactness.
+    Context {I: Type} (Φ: I → formula).
+    Definition sat := ∃ σ, ∀ ν, ∀ i, interpret_formula σ ν (Φ i).
+    Definition finite_sat := ∀ L, ∃ σ, ∀ ν,
+      Forall (λ i, interpret_formula σ ν (Φ i)) L.
+    
+    Lemma compactness_forward: sat → finite_sat.
+    Proof.
+      intros [σ all_sat] L.
+      exists σ.
+      intro.
+      apply Forall_forall; auto.
+    Qed.
+    
+    Context `{EM}.
+    Context (choice: ∀ A B, SetoidFunctionalChoice_on A B).
+    Lemma functional_choice: FunctionalChoice.
+    Proof.
+      intros A B R R_nonempty.
+      destruct (choice A B eq R _) as [f f_spec]; eauto.
+      - now intros ??? <-.
+      - exists f.
+        intro; destruct (f_spec x); trivial.
+    Qed.
+    Lemma dependent_functional_choice: DependentFunctionalChoice.
+    Proof.
+      apply non_dep_dep_functional_choice, functional_choice.
+    Qed.
+    
+    Section Backward.
+      Notation J := (list I).
+      Context (M: J → structure).
+      Context (M_spec: ∀ j ν, Forall (λ i, interpret_formula (M j) ν (Φ i)) j).
+      Section Ultrafilter.
+        Context (U: (J → Prop) → Prop) (Uuf: Ultrafilter (J → Prop) sub U).
+        Context (U_spec: ∀ j, U (λ k, incl j k)).
+        Lemma satisfies_each_formula i: ∀ ν,
+          interpret_formula (ultraproduct (U:=U) M) ν (Φ i).
+        Proof.
+          intro.
+          apply łoś; auto using dependent_functional_choice.
+          { exact (i::nil). }
+          unfold extent.
+          apply (uf_sub (λ j, incl (i::nil) j)); auto.
+          intros x inx.
+          specialize (M_spec x (λ y, ν y x)).
+          rewrite Forall_forall in M_spec.
+          apply M_spec, inx; left; trivial.
+        Qed.
+      End Ultrafilter.
+      
+      Definition setoid_rel_choice A B :=
+        gen_setoid_fun_choice_imp_gen_setoid_rel_choice A B (choice A B).
+
+      Lemma proper_filter_in_ultrafilter U (Uprop: ProperFilter (J → Prop) sub U):
+        ∃ U', Ultrafilter _ sub U' ∧ ∀ x, U x → U' x.
+      Proof.
+        apply (ultrafilter _ _ H
+          (@zorns_lemma H setoid_rel_choice) (λ _, False)); auto.
+        destruct 1.
+      Qed.
+      
+      Corollary model_exists: ∃ σ, ∀ ν i, interpret_formula σ ν (Φ i).
+      Proof.
+        set (filt (p: J → Prop) := ∃ j, ∀ k, incl j k → p k).
+        assert (filt_proper: ProperFilter _ sub filt). {
+          split. split.
+          - intros ?? sub [j j_spec].
+            exists j.
+            firstorder.
+          - intros * [j₁ spec₁] [j₂ spec₂].
+            exists (λ k, x k ∧ y k).
+            split; [|firstorder].
+            exists (j₁ ++ j₂).
+            intros k incl.
+            split.
+            + apply spec₁.
+              intros u inu.
+              apply incl, in_app_iff; auto.
+            + apply spec₂.
+              intros u inu.
+              apply incl, in_app_iff; auto.
+          - exists (λ _, False).
+            intros [j jspec].
+            apply (jspec j), incl_refl.
+        }
+        destruct (proper_filter_in_ultrafilter filt filt_proper) as
+          [U [Uultra Uspec]].
+        exists (ultraproduct (U:=U) M).
+        intros.
+        apply (satisfies_each_formula U Uultra).
+        intro.
+        apply Uspec; red.
+        exists j; auto.
+      Qed.
+    End Backward.
+    
+    Theorem compactness: sat ↔ finite_sat.
+    Proof.
+      split; auto using compactness_forward.
+      unfold finite_sat; intro fsat.
+      destruct (functional_choice (list I) structure
+        (λ j M, ∀ ν, Forall (λ i, interpret_formula M ν (Φ i)) j) fsat)
+        as [M M_spec].
+      apply (model_exists M), M_spec.
+    Qed.
+    
+    Lemma not_forall {A} (P: A → Prop): (¬∀ x, P x) ↔ ∃ x, ¬P x.
+    Proof.
+      split.
+      - intro contra; destruct (em (∃ x, ¬P x)) as [|none]; auto.
+        contradict contra; intro.
+        destruct (em (P x)); auto.
+        destruct none; eauto.
+      - intros [x notx] contra; firstorder.
+    Qed.
+    Lemma not_exists {A} (P: A → Prop): (¬∃ x, P x) ↔ ∀ x, ¬P x.
+    Proof. firstorder. Qed.
+    
+    Corollary compactness_unsat:
+      (∀ σ, ∃ ν i, ¬interpret_formula σ ν (Φ i)) ↔
+      (∃ L, ∀ σ, ∃ ν i, In i L ∧ ¬interpret_formula σ ν (Φ i)).
+    Proof.
+      transitivity (¬sat). {
+        unfold sat.
+        rewrite not_exists.
+        setoid_rewrite not_forall.
+        setoid_rewrite not_forall.
+        reflexivity.
+      }
+      rewrite compactness.
+      unfold finite_sat.
+      rewrite not_forall.
+      setoid_rewrite not_exists.
+      setoid_rewrite not_forall.
+      apply exists_iff; intro L.
+      apply forall_iff; intro σ.
+      apply exists_iff; intro ν.
+      rewrite <- Exists_Forall_neg by (intro; apply em).
+      now rewrite <- Exists_exists.
+    Qed.
+  End Compactness.
 End FirstOrderLogic.
+
+Module Import Notation.
+  Infix "'∧" := (fand _) (at level 50).
+  Infix "'∨" := (for_ _) (at level 50).
+  Infix "'→" := (fimp _) (at level 55).
+  Notation "'¬ φ" := (fnot _ φ) (at level 40).
+  Notation "'∀ x , φ" := (fforall _ x φ) (at level 60).
+  Notation "'∃ x , φ" := (fexists _ x φ) (at level 60).
+  Notation "'⊥" := (fbot _).
+  Infix "=?" := (var_eqb _) (at level 70).
+  Notation "∅" := (var_set_empty _).
+  Infix "∪" := (var_set_union _) (at level 50, left associativity).
+  Notation "(∪)" := (var_set_union _) (only parsing).
+  Infix "∩" := (var_set_inter _) (at level 40, left associativity).
+  Notation "(∩)" := (var_set_inter _) (only parsing).
+  Infix "∖" := (var_set_diff _) (at level 40, left associativity).
+  Notation "(∖)" := (var_set_diff _) (only parsing).
+  Notation "{[ x ]}" := (var_set_singleton _ x).
+  Notation "{[ x1 ; .. ; xn ; y ]}" := ({[ x1 ]} ∪ .. ({[ xn ]} ∪ {[ y ]}) ..).
+  Infix "∈" := (var_set_In _) (at level 70).
+  Notation "(∈)" := (var_set_In _) (only parsing).
+  Notation "(∉)" := (λ x y, ¬x ∈ y).
+  Infix "∉" := (∉) (at level 70).
+  Infix "=?" := (var_eqb _) (at level 70).
+End Notation.
+Arguments free {_ _ _} _.
+Arguments bound {_ _ _} _.
+Arguments subst {_ _ _} _ _.
+Arguments αrenaming {_} _ _.
+Arguments interpret_term {_} _ _ _.
+Arguments interpret_formula {_} _ _ _.
+Arguments update {_} _ _ _ _.
+Arguments var_eq {_} _ _.
+Arguments universe {_} _.
+Arguments interpret_func {_} _.
+Arguments interpret_pred {_} _.
