@@ -1130,3 +1130,568 @@ Arguments var_eq {_} _ _.
 Arguments universe {_} _.
 Arguments interpret_func {_} _.
 Arguments interpret_pred {_} _.
+
+Section NameBinding.
+  (* The horror! *)
+  Context {ℓ: language}.
+  Definition set_eq s₁ s₂ := ∀ x: Var ℓ, x ∈ s₁ ↔ x ∈ s₂.
+  Definition subset s₁ s₂ := ∀ x: Var ℓ, x ∈ s₁ → x ∈ s₂.
+  Global Instance: Equivalence set_eq.
+  Proof. split; red; unfold set_eq; firstorder trivial. Qed.
+  Global Instance: PreOrder subset.
+  Proof. split; red; unfold subset; firstorder trivial. Qed.
+  Global Instance: PartialOrder set_eq subset.
+  Proof. cbv; firstorder. Qed.
+  Global Instance: Proper (set_eq ==> set_eq ==> set_eq) (∪).
+  Proof.
+    unfold set_eq; intros ???????; rewrite !set_union; firstorder trivial.
+  Qed.
+  
+  Global Instance αfree: Proper (αrenaming ==> set_eq) free.
+  Proof.
+    induction 1; [|reflexivity|easy|etransitivity; eauto].
+    induction H; cbn.
+  Qed.
+End NameBinding.
+
+Section ExtendLang.
+  Context {ℓ₁ ℓ₂: language}.
+  Context (fv: Var ℓ₁ → Var ℓ₂) (ff: Func ℓ₁ → Func ℓ₂) (fp: Pred ℓ₁ → Pred ℓ₂).
+  Context (af: ∀ f, Func_arity ℓ₁ f = Func_arity ℓ₂ (ff f)).
+  Context (ap: ∀ p, Pred_arity ℓ₁ p = Pred_arity ℓ₂ (fp p)).
+  Definition cast_func {A} f a := eq_rect (Func_arity ℓ₁ f) (Vector.t A) a
+    (Func_arity ℓ₂ (ff f)) (af f).
+  Definition cast_pred {A} p a := eq_rect (Pred_arity ℓ₁ p) (Vector.t A) a
+    (Pred_arity ℓ₂ (fp p)) (ap p).
+  Fixpoint map_term (t: term ℓ₁) {struct t}: term ℓ₂ :=
+    match t return term ℓ₂ with
+    | tvar _ v => tvar ℓ₂ (fv v)
+    | tfunc _ f a => tfunc ℓ₂ (ff f) (cast_func f (Vector.map map_term a))
+    end.
+  Fixpoint map_formula (φ: formula ℓ₁): formula ℓ₂ := match φ with
+    | fpred _ p a => fpred ℓ₂ (fp p) (cast_pred p (Vector.map map_term a))
+    | φ₁ '∧ φ₂ => map_formula φ₁ '∧ map_formula φ₂
+    | φ₁ '∨ φ₂ => map_formula φ₁ '∨ map_formula φ₂
+    | φ₁ '→ φ₂ => map_formula φ₁ '→ map_formula φ₂
+    | '¬ φ => '¬ map_formula φ
+    | '∀ x, φ => '∀ (fv x), map_formula φ
+    | '∃ x, φ => '∃ (fv x), map_formula φ
+    | '⊥ => '⊥
+    end.
+  
+  Context (σ₁: structure ℓ₁) (σ₂: structure ℓ₂).
+  Context (fU: universe σ₁ → universe σ₂).
+  Context (preserves_f:
+    ∀ f a, fU (interpret_func σ₁ f a) =
+      interpret_func σ₂ (ff f) (cast_func f (Vector.map fU a))).
+  Context (preserves_p:
+    ∀ p a, interpret_pred σ₁ p a ↔
+      interpret_pred σ₂ (fp p) (cast_pred p (Vector.map fU a))).
+  Lemma push_cast {A B n n'} (f: A → B) (H: n = n') v:
+    eq_rect n (Vector.t B) (Vector.map f v) n' H =
+    Vector.map f (eq_rect n (Vector.t A) v n' H).
+  Proof. destruct H; trivial. Qed.
+  Lemma preserves_term t ν₁ ν₂ (preserves_ν: ∀ v, fU (ν₁ v) = ν₂ (fv v)):
+    fU (interpret_term σ₁ ν₁ t) = interpret_term σ₂ ν₂ (map_term t).
+  Proof.
+    induction t; cbn; auto.
+    rewrite preserves_f.
+    f_equal.
+    unfold cast_func.
+    rewrite <- push_cast; f_equal.
+    rewrite !vector_map_map.
+    apply vector_map_Forall; trivial.
+  Qed.
+  
+  Context (fU_sur: ∀ y, ∃ x, fU x = y).
+  Context (fv_inj: ∀ v₁ v₂, (v₁ =? v₂) = (fv v₁ =? fv v₂)).
+  Lemma preserves_interpret φ: ∀ ν₁ ν₂
+    (preserves_ν: ∀ v, fU (ν₁ v) = ν₂ (fv v)),
+    interpret_formula σ₁ ν₁ φ ↔ interpret_formula σ₂ ν₂ (map_formula φ).
+  Proof.
+    induction φ; intros; cbn;
+      try now rewrite ?IHφ, ?IHφ1, ?IHφ2.
+    - rewrite preserves_p.
+      unfold cast_pred.
+      rewrite <- push_cast.
+      f_equiv; f_equal.
+      rewrite !vector_map_map.
+      apply vector_map_ext.
+      intro t; apply preserves_term, preserves_ν.
+    - split.
+      + intros pre w₂.
+        destruct (fU_sur w₂) as [w₁ <-].
+        apply (IHφ (update σ₁ v w₁ ν₁)); auto.
+        intros w.
+        unfold update.
+        rewrite <- fv_inj.
+        destruct (v =? w); auto.
+      + intros pre w₁.
+        apply (IHφ _ (update σ₂ (fv v) (fU w₁) ν₂)); auto.
+        intros w.
+        unfold update.
+        rewrite <- fv_inj.
+        destruct (v =? w); auto.
+    - split.
+      + intros [w₁ pre].
+        exists (fU w₁).
+        apply (IHφ (update σ₁ v w₁ ν₁)); auto.
+        intros w.
+        unfold update.
+        rewrite <- fv_inj.
+        destruct (v =? w); auto.
+      + intros [w₂ pre].
+        destruct (fU_sur w₂) as [w₁ <-].
+        exists w₁.
+        apply (IHφ _ (update σ₂ (fv v) (fU w₁) ν₂)); auto.
+        intros w.
+        unfold update.
+        rewrite <- fv_inj.
+        destruct (v =? w); auto.
+  Qed.
+End ExtendLang.
+
+Lemma map_term_ext ℓ₁ ℓ₂ fv₁ fv₂ ff₁ ff₂ ffa₁ ffa₂
+  (eqfv: ∀ v, fv₁ v = fv₂ v) (eqff: ∀ f, ff₁ f = ff₂ f) t:
+  @map_term ℓ₁ ℓ₂ fv₁ ff₁ ffa₁ t = map_term fv₂ ff₂ ffa₂ t.
+Proof.
+  induction t; cbn; try congruence.
+  unfold cast_func.
+  generalize (ffa₁ f) as n₁, (ffa₂ f) as n₂.
+  rewrite <- (eqff f).
+  intros; f_equal.
+  revert n₂.
+  rewrite <- n₁.
+  apply K_dec. { apply Nat.eq_decidable. }
+  cbn.
+  apply vector_map_Forall, IHa.
+Qed.
+
+Lemma map_formula_ext ℓ₁ ℓ₂ fv₁ fv₂ ff₁ ff₂ ffa₁ ffa₂ fp₁ fp₂ fpa₁ fpa₂
+  (eqfv: ∀ v, fv₁ v = fv₂ v) (eqff: ∀ f, ff₁ f = ff₂ f)
+  (eqfp: ∀ p, fp₁ p = fp₂ p) φ:
+  @map_formula ℓ₁ ℓ₂ fv₁ ff₁ fp₁ ffa₁ fpa₁ φ =
+  map_formula fv₂ ff₂ fp₂ ffa₂ fpa₂ φ.
+Proof.
+  induction φ; cbn; try congruence.
+  f_equal.
+  unfold cast_pred.
+  generalize (fpa₁ p) as n₁, (fpa₂ p) as n₂.
+  rewrite <- (eqfp p).
+  intros; f_equal.
+  revert n₂.
+  rewrite <- n₁.
+  apply K_dec. { apply Nat.eq_decidable. }
+  cbn.
+  apply vector_map_ext.
+  intro t.
+  apply map_term_ext; auto.
+Qed.
+
+Section ExtendLangKeepVar.
+  Context {ℓ: language} {F₂ P₂: Type} (FA₂: F₂ → nat) (PA₂: P₂ → nat).
+  
+  Definition extend_lang := {|
+    Var := Var ℓ;
+    Func := F₂;
+    Pred := P₂;
+    VarSet := VarSet ℓ;
+    var_set_empty := var_set_empty ℓ;
+    var_set_union := var_set_union ℓ;
+    var_set_inter := var_set_inter ℓ;
+    var_set_diff := var_set_diff ℓ;
+    var_set_singleton := var_set_singleton ℓ;
+    var_set_In := var_set_In ℓ;
+    var_set_empty_spec := var_set_empty_spec ℓ;
+    var_set_union_spec := var_set_union_spec ℓ;
+    var_set_inter_spec := var_set_inter_spec ℓ;
+    var_set_diff_spec := var_set_diff_spec ℓ;
+    var_set_singleton_spec := var_set_singleton_spec ℓ;
+    var_eqb := var_eqb ℓ;
+    var_eq_spec := var_eq_spec ℓ;
+    Func_arity := FA₂;
+    Pred_arity := PA₂
+  |}.
+  Context (ff: Func ℓ → F₂) (af: ∀ f, Func_arity ℓ f = FA₂ (ff f)).
+  Definition extend_term := @map_term ℓ extend_lang id ff af.
+  Context (fp: Pred ℓ → P₂) (ap: ∀ p, Pred_arity ℓ p = PA₂ (fp p)).
+  Definition extend_formula := @map_formula ℓ extend_lang id ff fp af ap.
+  
+  Context (σ₁: structure ℓ) (σ₂: structure extend_lang).
+  Context (fU: universe σ₁ → universe σ₂).
+  Context (preserves_f:
+    ∀ f a, fU (interpret_func σ₁ f a) =
+      interpret_func σ₂ (ff f)
+      (cast_func (ℓ₂ := extend_lang) ff af f (Vector.map fU a))).
+  Context (preserves_p:
+    ∀ p a, interpret_pred σ₁ p a ↔
+      interpret_pred σ₂ (fp p)
+      (cast_pred (ℓ₂ := extend_lang) fp ap p (Vector.map fU a))).
+
+  Lemma extend_preserves_term t ν₁ ν₂ (preserves_ν: ∀ v, fU (ν₁ v) = ν₂ v):
+    fU (interpret_term σ₁ ν₁ t) = interpret_term σ₂ ν₂ (extend_term t).
+  Proof. now apply preserves_term. Qed.
+  
+  Context (fU_sur: ∀ y, ∃ x, fU x = y).
+  Lemma extend_preserves_interpret φ ν₁ ν₂
+    (preserves_ν: ∀ v, fU (ν₁ v) = ν₂ v):
+    interpret_formula σ₁ ν₁ φ ↔ interpret_formula σ₂ ν₂ (extend_formula φ).
+  Proof. apply preserves_interpret with fU; auto. Qed.
+End ExtendLangKeepVar.
+
+Section Deduction.
+  Section Defs.
+    Context {ℓ: language}.
+    Definition inst x t (φ: formula ℓ) :=
+      subst (λ y, if x =? y then Some t else None) φ.
+    Inductive hilbert_axioms: formula ℓ → Prop :=
+      | hconst φ₁ φ₂: hilbert_axioms (φ₁ '→ (φ₂ '→ φ₁))
+      | hshort φ₁ φ₂ φ₃:
+        hilbert_axioms ((φ₁ '→ (φ₂ '→ φ₃)) '→ ((φ₁ '→ φ₂) '→ (φ₁ '→ φ₃)))
+      | hcontra φ₁ φ₂: hilbert_axioms ((('¬ φ₂) '→ ('¬ φ₁)) '→ (φ₁ '→ φ₂))
+      | hbot φ: hilbert_axioms ('⊥ '→ φ)
+      | hinc φ: hilbert_axioms (φ '→ (('¬ φ) '→ '⊥))
+      | handl φ₁ φ₂: hilbert_axioms ((φ₁ '∧ φ₂) '→ φ₁)
+      | handr φ₁ φ₂: hilbert_axioms ((φ₁ '∧ φ₂) '→ φ₂)
+      | handi φ₁ φ₂: hilbert_axioms (φ₁ '→ (φ₂ '→ (φ₁ '∧ φ₂)))
+      | hore φ₁ φ₂ φ₃:
+        hilbert_axioms ((φ₁ '→ φ₃) '→ ((φ₂ '→ φ₃) '→ ((φ₁ '∨ φ₂) '→ φ₃)))
+      | horl φ₁ φ₂: hilbert_axioms (φ₁ '→ (φ₁ '∨ φ₂))
+      | horr φ₁ φ₂: hilbert_axioms (φ₂ '→ (φ₁ '∨ φ₂))
+      | halli x φ (not_free: x ∉ free φ): hilbert_axioms (φ '→ '∀ x, φ)
+      | halle x t φ (good: ∀ y, y ∈ free t → y ∈ bound φ → False): 
+        hilbert_axioms (('∀ x, φ) '→ inst x t φ)
+      | hallm x φ₁ φ₂:
+        hilbert_axioms (('∀ x, φ₁ '→ φ₂) '→ (('∀ x, φ₁) '→ '∀ x, φ₂))
+      | hexi x t φ (good: ∀ y, y ∈ free t → y ∈ bound φ → False):
+        hilbert_axioms (inst x t φ '→ '∃ x, φ)
+      | hexe x φ₁ φ₂ (not_free: x ∉ free φ₂):
+        hilbert_axioms (('∀ x, (φ₁ '→ φ₂)) '→ (('∃ x, φ₁) '→ φ₂))
+      | hgen x φ: hilbert_axioms φ → hilbert_axioms ('∀ x, φ).
+    Inductive hilbert (Φ: formula ℓ → Prop): formula ℓ → Prop :=
+      | hassum φ (assumed: Φ φ): hilbert Φ φ
+      | haxiom φ (axiom: hilbert_axioms φ): hilbert Φ φ
+      | hmp φ₁ φ₂ (der₁: hilbert Φ (φ₁ '→ φ₂)) (der₂: hilbert Φ φ₁): hilbert Φ φ₂
+      | halpha φ₁ φ₂ (α: αrenaming φ₁ φ₂): hilbert Φ φ₁ → hilbert Φ φ₂.
+      
+    Lemma interpret_inst σ ν x (t: term ℓ) φ
+      (good: ∀ y, y ∈ free t → y ∈ bound φ → False):
+      interpret_formula σ ν (inst x t φ) ↔
+      interpret_formula σ (update σ x (interpret_term σ ν t) ν) φ.
+    Proof.
+      unfold inst.
+      rewrite interpret_formula_subst.
+      - apply interpret_formula_local.
+        intros y iny.
+        unfold interpret_subst, update.
+        destruct (x =? y); trivial.
+      - intros y iny x' t'.
+        destruct (var_eq x x') as [<-|]; intros [=<-]; eauto.
+    Qed.
+    
+    Definition models (Φ: formula ℓ → Prop) φ :=
+      ∀ σ ν, (∀ φ', Φ φ' → interpret_formula σ ν φ') →
+      interpret_formula σ ν φ.
+    Theorem hilbert_sound `{EM} Φ φ: hilbert Φ φ → models Φ φ.
+    Proof.
+      induction 1; try solve [intros ???; cbn; auto; tauto].
+      - intros ?? _.
+        revert ν.
+        induction axiom; intro; try solve [cbn; auto; tauto].
+        + destruct (em (interpret_formula σ ν φ₂)); cbn; tauto.
+        + intros holds v.
+          revert holds.
+          apply interpret_formula_local.
+          intros y iny.
+          unfold update.
+          now destruct (var_eq_spec ℓ x y) as [<-|neq].
+        + intros holds; rewrite interpret_inst; auto.
+        + intros holds.
+          rewrite interpret_inst in holds; auto.
+          cbn; eauto.
+        + intros func [v holds].
+          apply (interpret_formula_local ℓ σ φ₂ (update σ x v ν)).
+          * intros y iny.
+            unfold update.
+            now destruct (var_eq_spec ℓ x y) as [<-|neq].
+          * apply func, holds.
+      - intros σ ν pre.
+        apply (IHhilbert1 σ ν pre).
+        apply (IHhilbert2 σ ν pre).
+      - intros ν σ pre%IHhilbert.
+        revert pre.
+        apply αrenaming_equivalence in α.
+        apply α.
+    Qed.
+    
+    Hint Constructors hilbert hilbert_axioms.
+    Lemma deduce_id Φ φ: hilbert Φ (φ '→ φ).
+    Proof.
+      apply (hmp Φ (φ '→ ((φ '→ φ) '→ φ))); [|auto].
+      apply (hmp Φ (φ '→ (((φ '→ φ) '→ φ) '→ φ))); auto.
+    Qed.
+    
+    Lemma weaken Φ φ: hilbert Φ φ → ∀ (Φ': _ → Prop),
+       (∀ ψ, Φ ψ → Φ' ψ) → hilbert Φ' φ.
+    Proof.
+      induction 1; auto; eauto.
+    Qed.
+    
+    Lemma deduction_step_fw Φ φ ψ:
+      hilbert Φ (φ '→ ψ) → hilbert (λ χ, Φ χ ∨ φ = χ) ψ.
+    Proof.
+      intro pre.
+      eapply (hmp _ φ); [|eauto].
+      eapply weaken; try eassumption.
+      left; trivial.
+    Qed.
+    
+    Theorem deduction_step_bw Φ ξ ψ:
+      hilbert (λ χ, Φ χ ∨ ξ = χ) ψ → hilbert Φ (ξ '→ ψ).
+    Proof.
+      induction 1; [eauto 3..].
+      - destruct assumed as [?|<-].
+        + eapply hmp; [apply haxiom, hconst|auto].
+        + apply deduce_id.
+      - eapply hmp; [apply haxiom, hconst|auto].
+      - apply (hmp Φ (ξ '→ φ₁)); trivial.
+        apply (hmp Φ (ξ '→ (φ₁ '→ φ₂))); auto.
+      - revert IHhilbert; apply halpha.
+        clear -α.
+        induction α.
+        + constructor.
+          apply αimpr, H.
+        + constructor 2.
+        + constructor 3; trivial.
+        + econstructor 4; eauto.
+    Qed.
+    
+    Lemma deduction_step Φ φ ψ:
+      hilbert Φ (φ '→ ψ) ↔ hilbert (λ χ, Φ χ ∨ φ = χ) ψ.
+    Proof. split; auto using deduction_step_bw, deduction_step_fw. Qed.
+    
+    Lemma hilbert_local Φ φ: hilbert Φ φ → ∃ L, Forall Φ L ∧
+      hilbert (λ φ, In φ L) φ.
+    Proof.
+      induction 1; try solve [exists nil; auto].
+      - exists (φ :: nil); cbn; auto using Forall.
+      - destruct IHhilbert1 as [L₁ [all₁ IH₁]], IHhilbert2 as [L₂ [all₂ IH₂]].
+        exists (L₁ ++ L₂).
+        split.
+        + rewrite Forall_forall in *.
+          intros x [?|?]%in_app_iff; auto.
+        + apply (hmp _ φ₁).
+          * apply (weaken (λ φ, In φ L₁)); auto.
+            intros; apply in_or_app; auto.
+          * apply (weaken (λ φ, In φ L₂)); auto.
+            intros; apply in_or_app; auto.
+      - destruct IHhilbert as [L [all ded]].
+        exists L; split; trivial.
+        revert ded; apply halpha, α.
+    Qed.
+    
+    Corollary hilbert_reduce_to_local Φ φ: hilbert Φ φ ↔ ∃ L, Forall Φ L ∧
+      hilbert (λ φ, In φ L) φ.
+    Proof.
+      split.
+      - apply hilbert_local.
+      - intros [L [Lsub pre]].
+        apply (weaken (λ φ, In φ L)); auto.
+        rewrite Forall_forall in Lsub; auto.
+    Qed.
+    
+    Lemma hilbert_wd: Proper (pointwise_relation _ iff ==> eq ==> iff)
+      hilbert.
+    Proof.
+      apply proper_sym_impl_iff_2; [apply _..|].
+      intros Φ Φ' eqΦ φ ? <-.
+      intro; eapply weaken; eauto.
+      intro; apply eqΦ.
+    Qed.
+
+    Lemma deduction_core Φ L φ:
+      hilbert Φ (fold_right (@fimp ℓ) φ L) ↔ hilbert (λ x, Φ x ∨ In x L) φ.
+    Proof.
+      revert Φ φ.
+      induction L as [|ψ L IH]; intros; cbn.
+      - apply hilbert_wd; hnf; intuition.
+      - rewrite deduction_step, IH.
+        apply hilbert_wd; hnf; intuition.
+    Qed.
+    
+    Theorem deduction Φ φ:
+      hilbert Φ φ ↔
+      ∃ L, Forall Φ L ∧ hilbert (λ _, False) (fold_right (@fimp ℓ) φ L).
+    Proof.
+      rewrite hilbert_reduce_to_local.
+      apply exists_iff; intro L.
+      apply and_iff_compat_l.
+      rewrite deduction_core.
+      apply hilbert_wd; hnf; intuition.
+    Qed.
+    
+    Lemma model_alt `{EM} Φ φ:
+      models Φ φ ↔ models (λ ψ, Φ ψ ∨ '¬ φ = ψ) '⊥.
+    Proof.
+      split; intros pre σ ν holds.
+      - assert (interpret_formula σ ν φ) as pos.
+        { apply pre; auto. }
+        assert (interpret_formula σ ν ('¬ φ)) as neg.
+        { apply holds; auto. }
+        contradiction.
+      - destruct (em (interpret_formula σ ν φ)) as [|contra]; trivial.
+        destruct (pre σ ν).
+        intros ψ [case|case]; auto.
+        subst; trivial.
+    Qed.
+    
+    Lemma hilbert_alt Φ φ:
+      hilbert Φ φ → hilbert (λ ψ, Φ ψ ∨ '¬ φ = ψ) '⊥.
+    Proof.
+      intro der.
+      apply (hmp _ ('¬φ)); [|auto].
+      apply (hmp _ φ); auto.
+      eapply weaken; eauto.
+    Qed.
+  End Defs.
+End Deduction.
+
+Module Type DeductionCompleteSpec.
+  Parameter hilbert_complete: EM → SetoidFunctionalChoice →
+    ∀ ℓ (Φ: formula ℓ → Prop) (φ: formula ℓ), models Φ φ → hilbert Φ φ.
+End DeductionCompleteSpec.
+
+Module DeductionComplete: DeductionCompleteSpec.
+  (** Part 1: Henkin sets for the infinite variable case. *)
+  Section Henkin.
+    Context {ℓ: language} (Φ: formula ℓ → Prop) {has_em: EM}.
+    Context (fresh: VarSet ℓ → Var ℓ).
+    Context (is_fresh: ∀ S, ¬fresh S ∈ S).
+    Record good (Ψ: formula ℓ → Prop) := {
+      good_contains_Φ: ∀ φ, Φ φ → Ψ φ;
+      good_consistent: ¬hilbert Ψ '⊥
+    }.
+    
+    Record henkin (Ψ: formula ℓ → Prop) := {
+      henkin_good :> good Ψ;
+      henkin_deductive: ∀ φ, hilbert Ψ φ → Ψ φ;
+      henkin_complete: ∀ φ, Ψ φ ∨ Ψ ('¬ φ);
+      henkin_witnesses: ∀ x φ, Ψ ('∃ x, φ) ↔
+        ∃ t, (∀ x, ¬x ∈ free t) ∧ Ψ (inst x t φ)
+    }.
+    Arguments good_contains_Φ {_}.
+    Arguments good_consistent {_}.
+    Arguments henkin_deductive {_}.
+    Arguments henkin_complete {_}.
+    
+    Lemma henkin_not_both Ψ φ (H: henkin Ψ): Ψ φ → Ψ ('¬ φ) → False.
+    Proof.
+      intros pos neg.
+      destruct (good_consistent H).
+      eapply (hilbert_wd (λ ψ, Ψ ψ ∨ '¬ φ = ψ)); [|reflexivity|].
+      + intro ψ; intuition (subst; trivial).
+      + apply hilbert_alt.
+        constructor; trivial.
+    Qed.
+    
+    Lemma henkin_cases Ψ φ (H: henkin Ψ):
+      (Ψ φ ∧ ¬Ψ ('¬ φ)) ∨
+      (¬Ψ φ ∧ Ψ ('¬ φ)).
+    Proof.
+      destruct (henkin_complete H φ) as [case|case];
+        eauto using henkin_not_both.
+    Qed.
+    
+    Program Definition henkin_structure Ψ :=
+      Build_structure ℓ { t: term ℓ | ∀ x, x ∉ free t }
+        (λ f a, tfunc ℓ f (Vector.map (@proj1_sig _ _) a))
+        (λ p a, Ψ (fpred ℓ p (Vector.map (@proj1_sig _ _) a))).
+    Next Obligation.
+      revert x; unfold not.
+      apply free_func.
+      induction a as [|[a Ha] k v]; cbn; constructor; trivial.
+    Qed.
+    
+    Lemma henkin_term Ψ t ν:
+      proj1_sig (interpret_term (henkin_structure Ψ) ν t) =
+      subst (λ v, Some (proj1_sig (ν v))) t.
+    Proof.
+      induction t; cbn; trivial.
+      f_equal.
+      rewrite vector_map_map.
+      apply vector_map_Forall; trivial.
+    Qed.
+    
+    Lemma henkin_terms Ψ n (t: (term ℓ)^n) ν:
+      Vector.map (λ t, proj1_sig (interpret_term (henkin_structure Ψ) ν t)) t =
+      Vector.map (subst (λ v, Some (proj1_sig (ν v)))) t.
+    Proof.
+      apply vector_map_ext.
+      intro; apply henkin_term.
+    Qed.
+    
+    Definition var' Ψ (ν: Var ℓ → universe (henkin_structure Ψ)) v :=
+      Some (proj1_sig (ν v)).
+    Definition var Ψ (ν: Var ℓ → universe (henkin_structure Ψ)) (φ: formula ℓ) :=
+      subst (var' Ψ ν) φ.
+
+    Lemma inst_remove Ψ v x (t: universe (henkin_structure Ψ)) ν:
+      inst v (proj1_sig t) (subst (remove ℓ v (var' Ψ ν)) x) =
+      var Ψ (update (henkin_structure Ψ) v t ν) x.
+    Proof.
+      unfold var, update, remove, inst, var'.
+      rewrite formula_subst_subst.
+      - apply formula_subst_local.
+        intros y _.
+        unfold merge_subst.
+        destruct (var_eq_spec ℓ v y) as [<-|neq]; trivial.
+        f_equal.
+        rewrite <- (term_subst_empty ℓ (proj1_sig (ν y))) at 2.
+        apply term_subst_local.
+        intros ? []%(proj2_sig (ν y)).
+      - intros y z t'.
+        destruct (v =? y); intros [=] _; subst.
+        apply (proj2_sig (ν y)).
+    Qed.
+    
+    Lemma inst_noop x φ: inst x (tvar ℓ x) φ = φ.
+    Proof.
+      unfold inst.
+      induction φ; cbn in *; try congruence.
+      - f_equal.
+        induction a; cbn; f_equal; trivial.
+        clear.
+        induction h; cbn; f_equal.
+        + destruct (var_eq_spec ℓ x v) as [<-|]; trivial.
+        + rewrite <- (vector_map_id a) at 2.
+          apply vector_map_Forall, IHa.
+      - f_equal.
+        destruct (var_eq_spec ℓ x v) as [<-|neq].
+        + rewrite <- (formula_subst_empty ℓ φ) at 2.
+          apply formula_subst_local.
+          intros y _.
+          unfold remove.
+          destruct var_eqb; trivial.
+        + rewrite <- IHφ at 2.
+          apply formula_subst_local.
+          intros y _.
+          unfold remove.
+          destruct (var_eq_spec ℓ v y) as [<-|neq']; trivial.
+          destruct (var_eq_spec ℓ x v); congruence.
+      - f_equal.
+        destruct (var_eq_spec ℓ x v) as [<-|neq].
+        + rewrite <- (formula_subst_empty ℓ φ) at 2.
+          apply formula_subst_local.
+          intros y _.
+          unfold remove.
+          destruct var_eqb; trivial.
+        + rewrite <- IHφ at 2.
+          apply formula_subst_local.
+          intros y _.
+          unfold remove.
+          destruct (var_eq_spec ℓ v y) as [<-|neq']; trivial.
+          destruct (var_eq_spec ℓ x v); congruence.
+    Qed.
+    
+  End Henkin.
+End DeductionComplete.
