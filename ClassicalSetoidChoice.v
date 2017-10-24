@@ -22,14 +22,10 @@
  
  *)
 From Coq.Logic Require Import ChoiceFacts.
-From Coq.Logic Require Export Classical.
+From Coq.Logic Require Export SetoidChoice.
 From Coq.Classes Require Import Equivalence.
-From misc Require Import MoreChoice.
+From misc Require Import MoreChoice ChoiceResults.
 From misc Require Zorn CantorBernsteinSchroeder.
-
-(** * The choice axiom. *)
-
-Axiom setoid_choice: SetoidFunctionalChoice.
 
 (** * Derived results. *)
 
@@ -47,3 +43,10 @@ Definition cantor_bernstein_schröder {A} Ae {Aequ: @Equivalence A Ae}
   {B} Be {Bequ: @Equivalence B Be} f f_proper f_inj g g_proper g_inj :=
   @CantorBernsteinSchroeder.cantor_bernstein_schröder A Ae Aequ B Be Bequ
     f f_proper f_inj g g_proper g_inj classic (setoid_fun_rel_reification A B).
+Definition dependent_zorn := dependent_zorn (@zorns_lemma).
+Definition dependent_nonempty_zorn := dependent_nonempty_zorn classic (@zorns_lemma).
+Notation Filter := Filter.
+Notation ProperFilter := ProperFilter.
+Notation Ultrafilter := Ultrafilter.
+Definition ultrafilter {L} Lle := ultrafilter L Lle classic (@zorns_lemma).
+Definition ultrafilter_prime {L} Lle {Lpre: PreOrder Lle} := ultrafilter_prime L Lle classic.

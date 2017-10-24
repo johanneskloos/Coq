@@ -5,12 +5,14 @@
 
  © 2017 Johannes Kloos
 
- This library requires Coq 8.6. *)
+ This library requires Coq 8.7. *)
 From Coq.Classes Require Import Equivalence Morphisms.
-From Coq Require Import Utf8 Setoid.
+From Coq Require Import Utf8 Setoid ChoiceFacts.
 
-(** Taken from Coq trunk; this will be in the standard library. *)
+(** This is in the standard library since 8.7. If you want to use 8.6, uncomment
+    this definition. *)
 
+(*
 Definition SetoidFunctionalChoice_on A B :=
   forall R : A -> A -> Prop,
   forall T : A -> B -> Prop,
@@ -20,7 +22,7 @@ Definition SetoidFunctionalChoice_on A B :=
   exists f : A -> B, forall x : A, T x (f x) /\
     (forall x' : A, R x x' -> f x = f x').
 Notation SetoidFunctionalChoice := (forall A B, SetoidFunctionalChoice_on A B).
-
+*)
 (** * Reification principle. *)
 
 (** This functional reification principle is missing from the standard library.

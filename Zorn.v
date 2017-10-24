@@ -53,7 +53,33 @@ Record well_order {A} (eqA ltA: relation A) := {
  Since they are long and the lemmas are not very useful outside
  the proofs, we encapsulate them away. *)
 
-Module Private.
+Module Type Proofs.
+  Record well_ordered {A} (le equ: relation A) (X: { S | Proper (equ ==> iff) S }) :=
+    { wo_total: ∀ x y, proj1_sig X x → proj1_sig X y → le x y ∨ le y x;
+      wo_minima: ∀ (Y: { S | Proper (equ ==> iff) S }),
+          (∀ x, proj1_sig Y x → proj1_sig X x) →
+          (∃ x, proj1_sig Y x) →
+          ∃ m, proj1_sig Y m ∧ ∀ x, proj1_sig Y x → le m x }.
+  Axiom zorns_lemma: ∀ {A} (le equ lt: relation A),
+    PreOrder le →
+    (∀ x y, equ x y ↔ le x y ∧ le y x) →
+    (∀ x y, lt x y ↔ le x y ∧ ¬le y x) →
+    excluded_middle →
+    GeneralizedSetoidRelationalChoice →
+    (∀ (F: { S | Proper (equ ==> iff) S }),
+           well_ordered le equ F →
+           ∃ m, ∀ x, proj1_sig F x → le x m) →
+    ∃ m, ∀ x, le m x → le x m.
+  Axiom well_ordering_from_zorns_lemma:
+    excluded_middle →
+    (∀ A (R: relation A) (pre: PreOrder R)
+       (chub: ∀ (C: A → Prop), (∀ x y, C x → C y → R x y ∨ R y x) →
+                               ∃ m, ∀ x, C x → R x m),
+        ZornsLemma R chub) →
+    ∀ {A} (eqA: relation A), Equivalence eqA → ∃ ltA, well_order eqA ltA.
+End Proofs.
+
+Module Private: Proofs.
   (* begin hide *)
   Class Le A := le: relation A.
   Class Lt A := lt: relation A.
@@ -904,8 +930,9 @@ Module Private.
       destruct o as [[S R] [sproper strict wf rproper correct complete]].
       now split.
   Qed.
-  (* end hide *)
+  (* end hide *)   
 End Private.
+
 
 (** * The key theorems *)
 
@@ -921,8 +948,8 @@ Section Theorems.
     ∃ m: A, ∀ x, R m x → R x m.
   Proof.
     apply Private.zorns_lemma with
-      (eqA := Private.default_eq R)
-      (ltA := Private.default_lt R);
+      (equ := λ x y, R x y ∧ R y x)
+      (lt := λ x y, R x y ∧ ¬R y x);
       auto;
       [reflexivity..|].
     intros [C Cset] [total _]; cbn in *.
@@ -961,7 +988,7 @@ Section Theorems.
     destruct (wo B eqB equB) as [ltB [_ ltB_strict ltB_wf ltB_proper ltB_total]].
     exists (λ a b, R a b ∧ ∀ b', R a b' → ¬ltB b' b).
     split; [tauto|].
-    split; [unfold Private.equ, Private.Equiv in *; solve_proper|].
+    split; [solve_proper|].
     split. {
       intro.
       destruct (Rfull x) as [y rel].
@@ -978,4 +1005,3 @@ Section Theorems.
     }
   Qed.
 End Theorems.
-
