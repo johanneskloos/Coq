@@ -77,7 +77,7 @@ Qed.
 
 Definition sub {A} (s₁ s₂: A → Prop) := ∀ x, s₁ x → s₂ x.
 Local Infix "⊆" := sub (at level 70).
-Instance sub_pre A: PreOrder (@sub A).
+#[local] Instance sub_pre A: PreOrder (@sub A).
 Proof. firstorder. Qed.
 
 Section Ultrafilter.
@@ -89,11 +89,11 @@ Section Ultrafilter.
     filt_dir: ∀ x y, F x → F y → ∃ z, F z ∧ z ≤ x ∧ z ≤ y
   }.
   Class ProperFilter (F: L → Prop) := {
-    pfilt_filt :> Filter F;
+    pfilt_filt :: Filter F;
     filt_proper: ∃ x, ¬F x
   }.
   Class Ultrafilter (F: L → Prop) := {
-    ufilt_pfilt :> ProperFilter F;
+    ufilt_pfilt :: ProperFilter F;
     filt_ultra: ∀ F', ProperFilter F' → F ⊆ F' → F' ⊆ F
   }.
   

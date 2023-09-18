@@ -100,7 +100,7 @@ Module Private: Proofs.
     Instance equ_equivalence: Equivalence equ.
     Proof.
       split; red; intros *; rewrite !equ_spec; unfold default_eq;
-        intuition; etransitivity; eassumption.
+        intuition auto with *; etransitivity; eassumption.
     Qed.
     
     Instance partial_order: PartialOrder equ le := equ_spec.
@@ -225,7 +225,7 @@ Module Private: Proofs.
     Program Definition restrict x (X: set): set := λ y, y ∈ X ∧ y < x.
     Next Obligation. Proof. solve_proper. Qed.
     
-    Hint Constructors closed_subset.
+    #[local] Hint Constructors closed_subset: core.
     
     Lemma initial_prefix X Y (Xwo: well_ordered X) (sub: Y < X):
       ∃ x, x ∈ X ∧ ¬x ∈ Y ∧ Y ≡ restrict x X.
@@ -702,10 +702,10 @@ Module Private: Proofs.
   Section WellOrderingTheorem.
     Context {A} (eqA: relation A) {equA: Equivalence eqA}.
     Record ordered_subset (S: A → Prop) (R: relation A) := {
-      S_proper:> Proper (eqA ==> iff) S;
-      R_strict:> StrictOrder R;
+      S_proper:: Proper (eqA ==> iff) S;
+      R_strict:: StrictOrder R;
       R_wellfounded: well_founded R;
-      R_proper:> Proper (eqA ==> eqA ==> iff) R;
+      R_proper:: Proper (eqA ==> eqA ==> iff) R;
       R_carrier_correct: ∀ x y, R x y → S x ∧ S y;
       R_carrier_complete: ∀ x y, S x → S y → eqA x y ∨ R x y ∨ R y x
     }.
@@ -732,7 +732,7 @@ Module Private: Proofs.
     Proof.
       split.
       - intros [[S R] good]; red; cbn.
-        split; intuition.
+        split; intuition auto.
       - intros [[S₁ R₁] good₁] [[S₂ R₂] good₂] [[S₃ R₃] good₃];
           unfold continues; cbn.
         intros [sub₁₂ closed₁₂ coincides₁₂] [sub₂₃ closed₂₃ coincides₂₃].
