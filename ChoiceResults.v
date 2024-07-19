@@ -75,6 +75,46 @@ Proof.
   firstorder.
 Qed.
 
+(**
+ * A useful variant of Zorn's Lemma that only requires dependent choice:
+ * If every chain contains a maximal element, there is an overall maximal
+ * element.
+ *)
+Lemma maximum_zorn (em: excluded_middle) {A} (Hin: inhabited A)
+  (Hchoice: ChoiceFacts.DependentFunctionalChoice_on (λ (_: A), A))
+  R {Hpre: PreOrder R}
+  (Hchain: ∀ (C: A → Prop), (∀ U V, C U → C V → R U V ∨ R V U) →
+    ∃ M, C M ∧ ∀ U, C U → R U M):
+  ∃ M, ∀ U, R M U → R U M.
+Proof.
+  destruct (Hchoice (λ U V, R U V ∧ (R V U → ∀ W, R U W → R W U)))
+    as [next Hnext]. {
+    intro U.
+    destruct (em (∃ V, R U V ∧ ¬R V U)) as [[V [Hlb Hub]]|Hcase].
+    1: exists V; tauto.
+    exists U; split.
+    1: reflexivity.
+    intros _ W HUW.
+    destruct (em (R W U)); firstorder.
+  }
+  destruct Hin as [I].
+  destruct (Hchain (λ U, ∃ n, U = Nat.iter n next I))
+    as [M [[n ->] Hmax]]. {
+    intros ?? [n ->] [m ->].
+    enough (∀ i j, i ≤ j → R (Nat.iter i next I) (Nat.iter j next I))
+      by (destruct (PeanoNat.Nat.le_ge_cases m n); auto with arith).
+    induction 1 as [|j Hle IH].
+    1: reflexivity.
+    etransitivity; eauto.
+    destruct (Hnext (Nat.iter j next I)); trivial.
+  }
+  exists (Nat.iter n next I); intros U Hub.
+  destruct (Hnext (Nat.iter n next I)) as [Hsub Hbound].
+  apply Hbound; trivial.
+  apply Hmax.
+  exists (S n); trivial.
+Qed.
+
 Definition sub {A} (s₁ s₂: A → Prop) := ∀ x, s₁ x → s₂ x.
 Local Infix "⊆" := sub (at level 70).
 #[local] Instance sub_pre A: PreOrder (@sub A).
