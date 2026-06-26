@@ -22,8 +22,8 @@
  
  *)
 From misc Require Import MoreChoice Zorn.
-From Coq Require Import Relations Equivalence Morphisms Utf8 ClassicalFacts.
-From Coq.Program Require Import Basics.
+From Stdlib Require Import Relations Equivalence Morphisms Utf8 ClassicalFacts.
+From Stdlib.Program Require Import Basics.
 
 (** A useful corollary of Zorn's lemma: The dependent Zorn's lemma. *)
 Lemma dependent_zorn (H: ∀ A R RPre chain, @ZornsLemma A R RPre chain)

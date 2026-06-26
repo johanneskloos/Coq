@@ -23,9 +23,9 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  
  *)
-From Coq Require Import
+From Stdlib Require Import
   Relations Equivalence Morphisms Utf8 ChoiceFacts ClassicalFacts.
-From Coq.Program Require Import Basics.
+From Stdlib.Program Require Import Basics.
 From misc Require Import MoreChoice.
 
 (** * The types of the statements *)

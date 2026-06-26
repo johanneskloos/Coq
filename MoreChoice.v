@@ -6,8 +6,8 @@
  © 2017 Johannes Kloos
 
  This library requires Coq 8.7. *)
-From Coq.Classes Require Import Equivalence Morphisms.
-From Coq Require Import Utf8 Setoid ChoiceFacts.
+From Stdlib.Classes Require Import Equivalence Morphisms.
+From Stdlib Require Import Utf8 Setoid ChoiceFacts.
 
 (** * Reification principle. *)
 

@@ -21,9 +21,9 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  
  *)
-From Coq.Relations Require Import Relations.
-From Coq.Classes Require Import Equivalence Morphisms RelationClasses.
-From Coq.Logic Require Import ClassicalFacts.
+From Stdlib.Relations Require Import Relations.
+From Stdlib.Classes Require Import Equivalence Morphisms RelationClasses.
+From Stdlib.Logic Require Import ClassicalFacts.
 From misc Require Import MoreChoice.
 
 (** * The proof of Cantor-Bernstein-Schröder. *)

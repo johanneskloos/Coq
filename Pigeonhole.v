@@ -21,7 +21,7 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  
  *)
-From Coq Require Import List Arith.
+From Stdlib Require Import List Arith.
 
 Theorem pigeonhole_principle {A} (lobjects lboxes: list A)
   (objects_in_boxes: incl lobjects lboxes)

@@ -21,9 +21,9 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  
  *)
-From Coq.Logic Require Import ChoiceFacts.
-From Coq.Logic Require Export SetoidChoice.
-From Coq.Classes Require Import Equivalence.
+From Stdlib.Logic Require Import ChoiceFacts.
+From Stdlib.Logic Require Export SetoidChoice.
+From Stdlib.Classes Require Import Equivalence.
 From misc Require Import MoreChoice ChoiceResults.
 From misc Require Zorn CantorBernsteinSchroeder.
 
